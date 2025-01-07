@@ -295,6 +295,7 @@ namespace Project12 {
 			this->importData->TabIndex = 6;
 			this->importData->Text = L"Импорт";
 			this->importData->UseVisualStyleBackColor = true;
+			this->importData->Click += gcnew System::EventHandler(this, &MyForm::importData_Click);
 			// 
 			// button5
 			// 
@@ -309,6 +310,7 @@ namespace Project12 {
 			this->button5->TabIndex = 7;
 			this->button5->Text = L"Очистить ";
 			this->button5->UseVisualStyleBackColor = true;
+			this->button5->Click += gcnew System::EventHandler(this, &MyForm::button5_Click);
 			// 
 			// button6
 			// 
@@ -602,5 +604,78 @@ private: System::Void dataGridView1_CellClick(System::Object^ sender, System::Wi
 		
 	}
 
+private: System::Void importData_Click(System::Object^ sender, System::EventArgs^ e) {
+	// Check if the file exists
+	if (!System::IO::File::Exists("data.csv")) {
+		MessageBox::Show("Файл 'data.csv' не найден", "Ошибка", MessageBoxButtons::OK, MessageBoxIcon::Error);
+		return;
+	}
+
+	// Read the file
+	System::IO::StreamReader^ file = gcnew System::IO::StreamReader("data.csv");
+	// Read the file line by line
+	int lineCount = 0;
+	while (!file->EndOfStream) {
+		String^ line = file->ReadLine();
+		array<String^>^ columns = line->Split(',');
+
+		// Check if the line has 4 columns
+		if (columns->Length == 4) {
+			// Prepare SQL statement to insert data
+			std::string insertSQL = "INSERT INTO Personal (FIO, Position, Departament, Salary) VALUES (?, ?, ?, ?)";
+			sqlite3_stmt* stmt;
+
+			// Convert .NET strings to C++ strings
+			std::string fioStr = msclr::interop::marshal_as<std::string>(gcnew System::String(columns[0]->ToCharArray()));
+
+			std::string positionStr = msclr::interop::marshal_as<std::string>(gcnew System::String(columns[1]->ToCharArray()));
+			std::string departamentStr = msclr::interop::marshal_as<std::string>(gcnew System::String(columns[2]->ToCharArray())); // Changed to columns[2] for Departament
+			double salaryVal = 0;
+
+			try {
+				salaryVal = System::Convert::ToDouble(columns[3], System::Globalization::CultureInfo::InvariantCulture);
+			}
+			catch (System::FormatException^) {
+				MessageBox::Show("Ошибка формата данных в строке CSV: " + line, "Ошибка", MessageBoxButtons::OK, MessageBoxIcon::Error);
+				continue;  // Skip this line if salary is invalid
+			}
+
+			// Prepare the SQLite statement
+			if (sqlite3_prepare_v2(db, insertSQL.c_str(), -1, &stmt, 0) == SQLITE_OK) {
+				sqlite3_bind_text(stmt, 1, fioStr.c_str(), -1, SQLITE_STATIC);
+				sqlite3_bind_text(stmt, 2, positionStr.c_str(), -1, SQLITE_STATIC);
+				sqlite3_bind_text(stmt, 3, departamentStr.c_str(), -1, SQLITE_STATIC);
+				sqlite3_bind_double(stmt, 4, salaryVal);
+
+				// Execute the SQL statement
+				if (sqlite3_step(stmt) != SQLITE_DONE) {
+					String^ errorMessage = gcnew String(sqlite3_errmsg(db));
+					MessageBox::Show("Ошибка при добавлении данных: " + errorMessage, "Ошибка", MessageBoxButtons::OK, MessageBoxIcon::Error);
+				}
+
+				// Finalize the prepared statement
+				sqlite3_finalize(stmt);
+				lineCount++;
+			}
+			else {
+				MessageBox::Show("Ошибка SQL при подготовке запроса.", "Ошибка", MessageBoxButtons::OK, MessageBoxIcon::Error);
+			}
+		}
+	}
+
+	file->Close();
+
+	// Show message after import is complete
+	MessageBox::Show("Импорт завершен. Добавлено " + lineCount + " записей.", "Успех", MessageBoxButtons::OK, MessageBoxIcon::Information);
+}
+
+private: System::Void button5_Click(System::Object^ sender, System::EventArgs^ e) {
+	// Clear the TextBoxes
+	fiotextBox->Text = "";
+	comboBox1->Text = "";
+	comboBox2->Text = "";
+	salaryBox->Text = "";
+	//clear datagridviwe 
+}
 };
 }
